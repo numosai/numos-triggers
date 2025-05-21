@@ -1,7 +1,7 @@
 {
-  "name": "trigger-and-monitor-tests-js",
+  "name": "numos-triggers",
   "version": "1.0.0",
-  "type": "module",
+  "type": "commonjs",
   "main": "index.js",
   "dependencies": {
     "@actions/core": "^1.11.1",
@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "@vercel/ncc": "^0.38.3"
+  },
+  "scripts": {
+    "build": "ncc build index.js --out dist"
   }
 }

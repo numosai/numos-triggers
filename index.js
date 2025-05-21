@@ -1,12 +1,10 @@
-import core from '@actions/core';
-import fetch from 'node-fetch';
-import minimist from 'minimist';
+const core = require('@actions/core');
+const fetch = require('node-fetch');
+const minimist = require('minimist');
 
-
-// node index.js --test_suite_id=c819c4fc-12c4-4e97-9a0a-ff79fc8cf469 --api_base_url=http://localhost:8000
 
 function getInput(name) {
-  // If running in GitHub Actions, use core.getInput
+  // If running in GitHub Actions
   if (process.env.GITHUB_ACTIONS === 'true') {
     return core.getInput(name);
   }
@@ -22,8 +20,6 @@ async function run() {
     const testSuiteId = getInput('test_suite_id');
     const baseUrl = getInput('api_base_url');
 
-    core.info(`Test Suite ID: ${testSuiteId}`);
-    core.info(`Base URL: ${baseUrl}`);
     if (!testSuiteId || !baseUrl) {
       throw new Error('Missing required inputs');
     }
