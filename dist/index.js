@@ -27892,11 +27892,6 @@ async function run() {
         `${baseUrl}/test-suite-executions/${executionId}/test-executions`
       );
 
-      testSuiteExecutionStatus = testSuiteExecution.status;
-      core.info(`Test suite execution status: ${testSuiteExecutionStatus}`);
-      core.info(`Test executions: ${JSON.stringify(testExecutions)}`);
-      core.info(`Test suite execution: ${JSON.stringify(testSuiteExecution)}`);
-
       // Process new test executions
       testExecutions
         .filter((test) =>
@@ -27917,6 +27912,7 @@ async function run() {
           testSuiteExecution.status
         )
       ) {
+        testSuiteExecutionStatus = testSuiteExecution.status;
         core.info(
           `Test suite completed with status: ${testSuiteExecution.status}`
         );
