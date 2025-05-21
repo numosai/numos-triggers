@@ -1,101 +1,122 @@
-const core = require('@actions/core');
-const fetch = require('node-fetch');
-const minimist = require('minimist');
+const core = require("@actions/core");
+const minimist = require("minimist");
 
+// Constants
+const CONFIG = {
+  MAX_ATTEMPTS: 30,
+  WAIT_TIME: 10000,
+  TEST_SUITE_EXECUTION_TERMINAL_STATUSES: [
+    "completed",
+    "failed",
+    "canceled",
+    "error",
+  ],
+  TEST_EXECUTION_TERMINAL_STATUSES: ["passed", "failed", "canceled", "error"],
+};
 
 function getInput(name) {
-  // If running in GitHub Actions
-  if (process.env.GITHUB_ACTIONS === 'true') {
-    return core.getInput(name);
-  }
+  return process.env.GITHUB_ACTIONS === "true"
+    ? core.getInput(name)
+    : minimist(process.argv.slice(2))[name.replace(/-/g, "_")] ||
+        minimist(process.argv.slice(2))[name];
+}
 
-  // Otherwise, parse command-line args
-  const args = minimist(process.argv.slice(2));
-  return args[name.replace(/-/g, '_')] || args[name];
+async function fetchWithError(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(
+      `API request failed: ${response.status} - ${JSON.stringify(error)}`
+    );
+  }
+  return response.json();
 }
 
 async function run() {
   try {
-    core.info('Starting test suite execution');
-    const testSuiteId = getInput('test_suite_id');
-    const baseUrl = getInput('api_base_url');
+    core.info("Starting test suite execution");
+    const testSuiteId = getInput("test_suite_id");
+    const baseUrl = getInput("api_base_url");
 
     if (!testSuiteId || !baseUrl) {
-      throw new Error('Missing required inputs');
+      throw new Error(
+        "Missing required inputs: test_suite_id and api_base_url are required"
+      );
     }
-
-    const url = `${baseUrl}/test-suite-executions/${testSuiteId}/execute-test-suite`;
-    core.info(`Triggering test suite: ${url}`);
 
     // Trigger test suite
-    const triggerResponse = await fetch(url, {
-      method: 'POST'
-    });
+    const triggerData = await fetchWithError(
+      `${baseUrl}/test-suite-executions/${testSuiteId}/execute`,
+      { method: "POST" }
+    );
 
-    if (!triggerResponse.ok) {
-      const error = await triggerResponse.json();
-      throw new Error(`Failed to trigger test suite: ${triggerResponse.status} - ${JSON.stringify(error)}`);
-    }
-
-    const triggerData = await triggerResponse.json();
     const executionId = triggerData.id;
     core.info(`Triggered Test Suite: ${executionId}`);
 
     // Monitor test suite
+    let testSuiteExecutionStatus = triggerData.status;
     const completedTestIds = new Set();
-    let status = '';
-    let allPassed = true;
-    let done = false;
+    const results = { passed: [], failed: [] };
     let attempts = 0;
 
-    while (!done) {
-      const statusResponse = await fetch(`${baseUrl}/test-suite-executions/${executionId}/test-executions`);
-      if (!statusResponse.ok) {
-        throw new Error(`Failed to fetch status: ${statusResponse.status}`);
-      }
+    while (attempts++ < CONFIG.MAX_ATTEMPTS) {
+      const { testSuiteExecution, testExecutions } = await fetchWithError(
+        `${baseUrl}/test-suite-executions/${executionId}/test-executions`
+      );
 
-      const { testSuiteExecution, testExecutions } = await statusResponse.json();
-      status = testSuiteExecution.status;
-      core.info(`Suite Status: ${status}`);
-
-      let completeCount = 0;
-      allPassed = true;
-
-      for (const test of testExecutions) {
-        if (!completedTestIds.has(test.id)) {
-          core.info(`Test ${test.testName} (${test.id}) - Status: ${test.status}`);
-          if (['passed', 'failed', 'canceled', 'error'].includes(test.status)) {
+      // Process new test executions
+      testExecutions
+        .filter((test) =>
+          CONFIG.TEST_EXECUTION_TERMINAL_STATUSES.includes(test.status)
+        )
+        .forEach((test) => {
+          if (!completedTestIds.has(test.id)) {
             completedTestIds.add(test.id);
-            completeCount++;
+            core.info(
+              `Test [${test.testName} (id: ${test.id})] - Status: ${test.status}`
+            );
+            results[test.status === "passed" ? "passed" : "failed"].push(test);
           }
-          if (test.status === 'failed') {
-            allPassed = false;
-          }
-        }
+        });
+
+      if (
+        CONFIG.TEST_SUITE_EXECUTION_TERMINAL_STATUSES.includes(
+          testSuiteExecution.status
+        )
+      ) {
+        testSuiteExecutionStatus = testSuiteExecution.status;
+        core.info(
+          `Test suite completed with status: ${testSuiteExecution.status}`
+        );
+        break;
       }
 
-      if (status === 'completed' || status === 'failed' || status === 'canceled') {
-        if (status === 'failed' || status === 'canceled') {
-          core.setFailed('Test suite failed or canceled.');
-        } else {
-          core.info('Test suite completed successfully.');
-        }
-        done = true;
-      } else {
-        await new Promise(res => setTimeout(res, 5000));
-        attempts++;
-        if (attempts > 20) {
-          throw new Error('Monitoring timed out after 20 attempts.');
-        }
-      }
+      await new Promise((res) => setTimeout(res, CONFIG.WAIT_TIME));
     }
 
-    if (!allPassed) {
-      core.setFailed('Some tests failed.');
+    // Generate summary
+    const summary = [
+      `Total tests: ${results.passed.length + results.failed.length}`,
+      results.failed.length > 0 &&
+        `${results.failed.length} tests failed: ${results.failed
+          .map((t) => `${t.testName} (${t.id})`)
+          .join(", ")}`,
+      results.passed.length > 0 &&
+        `${results.passed.length} tests passed: ${results.passed
+          .map((t) => `${t.testName} (${t.id})`)
+          .join(", ")}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (
+      results.failed.length === 0 &&
+      testSuiteExecutionStatus === "completed"
+    ) {
+      core.info(summary);
     } else {
-      core.info('All tests passed!');
+      core.setFailed(summary);
     }
-
   } catch (error) {
     core.setFailed(error.message);
   }
