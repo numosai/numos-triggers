@@ -3,8 +3,8 @@ const minimist = require("minimist");
 
 // Constants
 const CONFIG = {
-  MAX_ATTEMPTS: 20,
-  WAIT_TIME: 5000,
+  MAX_ATTEMPTS: 30,
+  WAIT_TIME: 10000,
   TEST_SUITE_EXECUTION_TERMINAL_STATUSES: [
     "completed",
     "failed",
@@ -54,6 +54,7 @@ async function run() {
     core.info(`Triggered Test Suite: ${executionId}`);
 
     // Monitor test suite
+    let testSuiteExecutionStatus = triggerData.status;
     const completedTestIds = new Set();
     const results = { passed: [], failed: [] };
     let attempts = 0;
@@ -62,6 +63,11 @@ async function run() {
       const { testSuiteExecution, testExecutions } = await fetchWithError(
         `${baseUrl}/test-suite-executions/${executionId}/test-executions`
       );
+
+      testSuiteExecutionStatus = testSuiteExecution.status;
+      core.info(`Test suite execution status: ${testSuiteExecutionStatus}`);
+      core.info(`Test executions: ${JSON.stringify(testExecutions)}`);
+      core.info(`Test suite execution: ${JSON.stringify(testSuiteExecution)}`);
 
       // Process new test executions
       testExecutions
@@ -107,7 +113,10 @@ async function run() {
       .filter(Boolean)
       .join("\n");
 
-    if (results.failed.length === 0) {
+    if (
+      results.failed.length === 0 &&
+      testSuiteExecutionStatus === "completed"
+    ) {
       core.info(summary);
     } else {
       core.setFailed(summary);
