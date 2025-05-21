@@ -1,0 +1,12 @@
+name: 'Trigger and Monitor Numos Tests'
+description: 'Triggers a test suite on the Numos platform and monitors its execution.'
+inputs:
+  test_suite_id:
+    description: 'The ID of the test suite to trigger.'
+    required: true
+  api_base_url:
+    description: 'Base URL of the Numos API.'
+    required: true
+runs:
+  using: 'node20'
+  main: 'index.js'
