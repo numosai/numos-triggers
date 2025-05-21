@@ -27874,7 +27874,7 @@ async function run() {
 
     // Trigger test suite
     const triggerData = await fetchWithError(
-      `${baseUrl}/test-suite-executions/${testSuiteId}/execute-test-suite`,
+      `${baseUrl}/test-suite-executions/${testSuiteId}/execute`,
       { method: "POST" }
     );
 
