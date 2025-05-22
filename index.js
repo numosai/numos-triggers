@@ -3,6 +3,7 @@ const minimist = require("minimist");
 
 // Constants
 const CONFIG = {
+  DEFAULT_API_BASE_URL: "https://api.numos.io",
   MAX_ATTEMPTS: 30,
   WAIT_TIME: 10000,
   TEST_SUITE_EXECUTION_TERMINAL_STATUSES: [
@@ -36,12 +37,10 @@ async function run() {
   try {
     core.info("Starting test suite execution");
     const testSuiteId = getInput("test_suite_id");
-    const baseUrl = getInput("api_base_url");
+    const baseUrl = getInput("api_base_url") || CONFIG.DEFAULT_API_BASE_URL;
 
-    if (!testSuiteId || !baseUrl) {
-      throw new Error(
-        "Missing required inputs: test_suite_id and api_base_url are required"
-      );
+    if (!testSuiteId) {
+      throw new Error("Missing required input: test_suite_id is required");
     }
 
     // Trigger test suite

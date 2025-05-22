@@ -6,7 +6,6 @@ inputs:
     required: true
   api_base_url:
     description: 'Base URL of the Numos API.'
-    required: true
 runs:
   using: 'node20'
   main: 'dist/index.js'
