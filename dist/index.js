@@ -27843,6 +27843,15 @@ const CONFIG = {
   TEST_EXECUTION_TERMINAL_STATUSES: ["passed", "failed", "canceled", "error"],
 };
 
+// Helper function to pad and truncate
+function formatCell(content, width) {
+  if (content.length > width) {
+    const truncated = content.slice(0, width - 3);
+    return truncated + "..." + " ".repeat(width - truncated.length - 3);
+  }
+  return content.padEnd(width, " ");
+}
+
 function getInput(name) {
   return process.env.GITHUB_ACTIONS === "true"
     ? core.getInput(name)
@@ -27878,15 +27887,22 @@ async function run() {
     );
 
     const executionId = triggerData.id;
-    core.info(`Triggered Test Suite: ${executionId}`);
+    core.info(`Triggered Test Suite ${testSuiteId} with execution id ${executionId}`);
 
     // Monitor test suite
     let testSuiteExecutionStatus = triggerData.status;
     const completedTestIds = new Set();
     const results = { passed: [], failed: [] };
     let attempts = 0;
+    const columnWidth = 50;
 
     while (attempts++ < CONFIG.MAX_ATTEMPTS) {
+      core.info(
+        `Checking test suite execution status: Attempt ${attempts} of ${
+          CONFIG.MAX_ATTEMPTS
+        }`
+      );
+
       const { testSuiteExecution, testExecutions } = await fetchWithError(
         `${baseUrl}/test-suite-executions/${executionId}/test-executions`
       );
@@ -27900,7 +27916,7 @@ async function run() {
           if (!completedTestIds.has(test.id)) {
             completedTestIds.add(test.id);
             core.info(
-              `Test [${test.testName} (id: ${test.id})] - Status: ${test.status}`
+              `Test: ${test.testName} - Status: ${test.status.toUpperCase()}`
             );
             results[test.status === "passed" ? "passed" : "failed"].push(test);
           }
@@ -27912,37 +27928,38 @@ async function run() {
         )
       ) {
         testSuiteExecutionStatus = testSuiteExecution.status;
-        core.info(
-          `Test suite completed with status: ${testSuiteExecution.status}`
-        );
+        core.info(`\nTest suite ${testSuiteExecution.status.toUpperCase()}\n`);
         break;
       }
 
       await new Promise((res) => setTimeout(res, CONFIG.WAIT_TIME));
     }
 
-    // Generate summary
-    const summary = [
-      `Total tests: ${results.passed.length + results.failed.length}`,
-      results.failed.length > 0 &&
-        `${results.failed.length} tests failed: ${results.failed
-          .map((t) => `${t.testName} (${t.id})`)
-          .join(", ")}`,
-      results.passed.length > 0 &&
-        `${results.passed.length} tests passed: ${results.passed
-          .map((t) => `${t.testName} (${t.id})`)
-          .join(", ")}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    // Build final summary table
+    const total = results.passed.length + results.failed.length;
+    let table = `| ${formatCell("Test", columnWidth)} | Status  |\n`;
+    table += `|${"-".repeat(columnWidth + 2)}|---------|\n`;
 
+    [...results.passed, ...results.failed].forEach((test) => {
+      table += `| ${formatCell(test.testName, columnWidth)} | ${test.status
+        .toUpperCase()
+        .padEnd(7)} |\n`;
+    });
+
+    const summaryLines = [
+      `Total Tests: ${total} | Passed: ${results.passed.length} | Failed: ${results.failed.length}`,
+      ``,
+      table,
+    ];
+
+    // Log and set status
     if (
       results.failed.length === 0 &&
       testSuiteExecutionStatus === "completed"
     ) {
-      core.info(summary);
+      core.info(summaryLines.join("\n"));
     } else {
-      core.setFailed(summary);
+      core.setFailed(summaryLines.join("\n"));
     }
   } catch (error) {
     core.setFailed(error.message);
