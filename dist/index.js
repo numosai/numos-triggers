@@ -27833,7 +27833,7 @@ const minimist = __nccwpck_require__(994);
 const CONFIG = {
   DEFAULT_API_BASE_URL: "https://api.numos.ai",
   MAX_ATTEMPTS: 30,
-  WAIT_TIME: 10000,
+  WAIT_TIME: 60000,
   TEST_SUITE_EXECUTION_TERMINAL_STATUSES: [
     "completed",
     "failed",
