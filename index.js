@@ -6,6 +6,8 @@ const CONFIG = {
   DEFAULT_API_BASE_URL: "https://api.numos.ai",
   MAX_ATTEMPTS: 30,
   WAIT_TIME: 60000,
+  RETRY_ATTEMPTS: 3,
+  RETRY_BASE_DELAY: 2000,
   TEST_SUITE_EXECUTION_TERMINAL_STATUSES: [
     "completed",
     "failed",
@@ -31,15 +33,34 @@ function getInput(name) {
         minimist(process.argv.slice(2))[name];
 }
 
-async function fetchWithError(url, options = {}) {
-  const response = await fetch(url, options);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `API request failed: ${response.status} - ${JSON.stringify(error)}`
-    );
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url, options = {}) {
+  let lastError;
+  for (let attempt = 1; attempt <= CONFIG.RETRY_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(
+          `API request failed: ${response.status} - ${JSON.stringify(error)}`
+        );
+      }
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      if (attempt < CONFIG.RETRY_ATTEMPTS) {
+        const delay = CONFIG.RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+        core.warning(
+          `Request failed (attempt ${attempt}/${CONFIG.RETRY_ATTEMPTS}): ${error.message}. Retrying in ${delay}ms...`
+        );
+        await sleep(delay);
+      }
+    }
   }
-  return response.json();
+  throw lastError;
 }
 
 async function run() {
@@ -53,7 +74,7 @@ async function run() {
     }
 
     // Trigger test suite
-    const triggerData = await fetchWithError(
+    const triggerData = await fetchWithRetry(
       `${baseUrl}/test-suite-executions/${testSuiteId}/execute`,
       { method: "POST" }
     );
@@ -75,7 +96,7 @@ async function run() {
         }`
       );
 
-      const { testSuiteExecution, testExecutions } = await fetchWithError(
+      const { testSuiteExecution, testExecutions } = await fetchWithRetry(
         `${baseUrl}/test-suite-executions/${executionId}/test-executions`
       );
 
